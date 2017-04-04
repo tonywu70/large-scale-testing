@@ -1,0 +1,157 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "commonSettings": {
+      "type": "object"
+    },
+    "osSettings": {
+      "type": "object"
+    },
+    "storageSettings": {
+      "type": "object"
+    },
+    "adminPassword": {
+      "type": "securestring"
+    },
+    "machineSettingsWorker": {
+      "type": "object"
+    },
+    "subnet": {
+      "type": "object"
+    },
+    "batchSettings": {
+      "type": "string"
+    }
+  },
+  "variables": {
+    "subnetRef": "/subscriptions/<sub_id>/resourceGroups/<subname>/providers/Microsoft.Network/virtualNetworks/zone1/subnets/worker",
+    "vmName": "[concat('worker', 'vm', parameters('batchSettings'))]",
+    "nicName": "[concat('worker', 'nic', parameters('batchSettings'))]",
+    "adminUsername": "[parameters('commonSettings').adminUsername]",
+    "vmCount": "[parameters('machineSettingsWorker').vmCount]",
+    "addprefix": "[parameters('machineSettingsWorker').addprefix]",
+    "vmssName": "[concat('workervmss', parameters('batchSettings'))]"
+  },
+  "resources": [
+  {
+         "type":"Microsoft.Compute/virtualMachineScaleSets",
+         "name":"[variables('vmssName')]",
+         "location":"[resourceGroup().location]",
+         "apiVersion":"2016-04-30-preview",
+         "dependsOn":[ ],
+         "sku":{
+            "name":"Standard_D14_v2",
+            "tier":"Standard",
+            "capacity":"[variables('vmCount')]"
+         },
+         "plan":{
+               "name":"7_2",
+               "product":"[parameters('osSettings').imageReference.offer]",
+               "publisher":"[parameters('osSettings').imageReference.publisher]"
+          },
+         "properties":{
+            "overprovision":"true",
+            "largeScaleEnabled": "true",
+            "upgradePolicy":{
+               "mode":"Manual"
+            },
+            "virtualMachineProfile":{
+               "storageProfile":{
+                  "imageReference":{
+                     "publisher":"[parameters('osSettings').imageReference.publisher]",
+                     "offer":"[parameters('osSettings').imageReference.offer]",
+                     "sku":"[parameters('osSettings').imageReference.sku]",
+                     "version":"1.0.2"
+                  },
+                  "osDisk":{
+                     "createOption":"fromImage"
+                  },
+                  "dataDisks":[
+                     {
+                        "lun":0,
+                        "diskSizeGB":"1023",
+                        "createOption":"empty"
+                     },
+                     {
+                        "lun":1,
+                        "diskSizeGB":"1023",
+                        "createOption":"empty"
+                     },
+                     {
+                        "lun":2,
+                        "diskSizeGB":"1023",
+                        "createOption":"empty"
+                     },
+                     {
+                        "lun":3,
+                        "diskSizeGB":"1023",
+                        "createOption":"empty"
+                     },
+                     {
+                        "lun":4,
+                        "diskSizeGB":"1023",
+                        "createOption":"empty"
+                     }
+                  ]
+               },
+               "osProfile":{
+                  "computerNamePrefix": "[variables('vmssName')]",
+                  "adminUsername":"[variables('adminUsername')]",
+                  "adminPassword":"[parameters('adminPassword')]",
+                  "linuxConfiguration":{
+                     "disablePasswordAuthentication":"true",
+                     "ssh":{
+                        "publicKeys":[
+                           {
+                              "path":"[parameters('commonSettings').sshKeyPath]",
+                              "keyData":"[parameters('commonSettings').sshKeyData]"
+                           }
+                        ]
+                     }
+                  }
+               },
+               "networkProfile":{
+                  "networkInterfaceConfigurations":[
+                     {
+                        "name":"[variables('nicName')]",
+                        "properties":{
+                           "primary":"true",
+                           "ipConfigurations":[
+                              {
+                                 "name":"ipConfigName",
+                                 "properties":{
+                                    "privateIPAllocationMethod":"Dynamic",
+                                    "subnet":{
+                                       "id":"[variables('subnetRef')]"
+                                    }
+                                 }
+                              }
+                           ]
+                        }
+                     }
+                  ]
+               },
+               "extensionProfile":{
+                  "extensions":[
+                     {
+                        "name":"worker_install",
+                        "properties":{
+                           "publisher":"Microsoft.OSTCExtensions",
+                           "type":"CustomScriptForLinux",
+                           "typeHandlerVersion":"1.4",
+                           "autoUpgradeMinorVersion":true,
+                           "settings":{
+                              "fileUris":"[parameters('osSettings').scripts]",
+                              "commandToExecute":"[concat('bash worker_install.sh ',  parameters('commonSettings').adminUsername)]"
+                           }
+                        }
+                     }
+                  ]
+               }
+            }
+         }
+      }
+  ],
+  "outputs": {}
+}

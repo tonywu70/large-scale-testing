@@ -1,0 +1,33 @@
+{
+  "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "storageAccountNamePrefix": {
+      "value": "cdhstore"
+    },
+    "adminUsername": {
+      "value": "myuser"
+    },
+    "adminPassword": {
+      "value": "blah"
+    },
+    "sshKeyData": {
+      "value": "ssh-rsa blah myuser@vm-123"
+    },
+    "domainName": {
+      "value": "cdh-iaas1"
+    },
+    "jumpbox": {
+      "value": "Enabled"
+    },
+    "batchSettings": {
+      "value": "0"
+    },
+    "virtualNetworkName": {
+      "value": "zone1"
+    },
+    "tshirtSize": {
+      "value": "Medium"
+    }
+  }
+}

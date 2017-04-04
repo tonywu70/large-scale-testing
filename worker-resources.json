@@ -1,0 +1,194 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "commonSettings": {
+      "type": "object"
+    },
+    "osSettings": {
+      "type": "object"
+    },
+    "storageSettings": {
+      "type": "object"
+    },
+    "adminPassword": {
+      "type": "securestring"
+    },
+    "machineSettingsWorker": {
+      "type": "object"
+    },
+    "subnet": {
+      "type": "object"
+    },
+    "batchSettings": {
+      "type": "string"
+    }
+  },
+  "variables": {
+    "subnetRef": "[concat(resourceId('Microsoft.Network/virtualNetworks', parameters('subnet').vnet), '/subnets/', parameters('subnet').name)]",
+    "storageAccountName": "[concat(parameters('storageSettings').name, parameters('commonSettings').namespace, parameters('batchSettings'))]",
+    "vmName": "[concat('worker', 'vm', parameters('batchSettings'))]",
+    "nicName": "[concat('worker', 'nic', parameters('batchSettings'))]",
+    "adminUsername": "[parameters('commonSettings').adminUsername]",
+    "vmCount": "[parameters('machineSettingsWorker').vmCount]",
+    "addprefix": "[parameters('machineSettingsWorker').addprefix]",
+    "availabilitySetName": "[concat('availabilitySetWorkerNodes', parameters('batchSettings'))]"
+  },
+  "resources": [
+    {
+      "apiVersion": "2015-06-15",
+      "type": "Microsoft.Network/networkInterfaces",
+      "name": "[concat(variables('nicName'), copyindex())]",
+      "location": "[resourceGroup().location]",
+      "copy": {
+        "name": "nicCopyLoop",
+        "count": "[variables('vmCount')]"
+      },
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "ipconfig1",
+            "properties": {
+              "privateIPAllocationMethod": "Dynamic",
+              "subnet": {
+                "id": "[variables('subnetRef')]"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Compute/availabilitySets",
+      "name": "[variables('availabilitySetName')]",
+      "apiVersion": "2016-04-30-preview",
+      "location":"[resourceGroup().location]",
+      "properties": {
+        "platformFaultDomainCount": "2",
+        "platformUpdateDomainCount": "2",
+        "managed": "true"
+      }
+    },
+    {
+      "apiVersion": "2016-04-30-preview",
+      "type": "Microsoft.Compute/virtualMachines",
+      "name": "[concat(variables('vmName'), copyindex())]",
+      "location": "[resourceGroup().location]",
+      "dependsOn": [
+        "[concat('Microsoft.Network/networkInterfaces/', variables('nicName'), copyindex())]"
+      ],
+      "copy": {
+        "name": "vmCopyLoop",
+        "count": "[variables('vmCount')]"
+      },
+      "plan": {
+                "name": "7_2",
+                "product": "[parameters('osSettings').imageReference.offer]",
+                "publisher": "[parameters('osSettings').imageReference.publisher]"
+      },
+      "properties": {
+        "availabilitySet": {
+          "id": "[resourceId('Microsoft.Compute/availabilitySets',variables('availabilitySetName'))]"
+        },
+        "hardwareProfile": {
+          "vmSize": "[parameters('machineSettingsWorker').vmSize]"
+        },
+        "osProfile": {
+          "computerName": "[concat(variables('vmName'), copyindex())]",
+          "adminUsername": "[variables('adminUsername')]",
+          "adminPassword": "[parameters('adminPassword')]",
+          "linuxConfiguration": {
+            "disablePasswordAuthentication": "true",
+            "ssh": {
+              "publicKeys": [
+                {
+                  "path": "[parameters('commonSettings').sshKeyPath]",
+                  "keyData": "[parameters('commonSettings').sshKeyData]"
+                }
+              ]
+            }
+          }
+        },
+        "storageProfile":
+        {
+          "imageReference":
+          {
+            "publisher": "[parameters('osSettings').imageReference.publisher]",
+            "offer": "[parameters('osSettings').imageReference.offer]",
+            "sku": "[parameters('osSettings').imageReference.sku]",
+            "version": "latest"
+          },
+          "osDisk": {
+            "name": "[concat('osDisk', variables('vmName'), copyindex())]",
+            "createOption": "fromImage"
+          },
+          "dataDisks": [
+          {
+           "lun": 0,
+            "name": "[concat('worker', parameters('batchSettings'), 'datadisk1', copyIndex())]",
+            "diskSizeGB": "1023",
+            "createOption": "empty"
+          },
+          {
+           "lun": 1,
+            "name": "[concat('worker', parameters('batchSettings'),'datadisk2', copyIndex())]",
+            "diskSizeGB": "1023",
+            "createOption": "empty"
+          },
+          {
+            "lun": 2,
+            "name": "[concat('worker', parameters('batchSettings'), 'datadisk3', copyIndex())]",
+            "diskSizeGB": "1023",
+            "createOption": "empty"
+          },
+          {
+            "lun": 3,
+            "name": "[concat('worker', parameters('batchSettings'), 'datadisk4', copyIndex())]",
+            "diskSizeGB": "1023",
+            "createOption": "empty"
+          },
+          {
+            "lun": 4,
+            "name": "[concat('worker', parameters('batchSettings'), 'datadisk5', copyIndex())]",
+            "diskSizeGB": "1023",
+            "createOption": "empty"
+          }
+        ]
+      },
+        "networkProfile": {
+          "networkInterfaces": [
+            {
+              "id": "[resourceId('Microsoft.Network/networkInterfaces', concat(variables('nicName'), copyindex()) )]"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines/extensions",
+      "name": "[concat(variables('vmName'), copyindex(), '/worker_install')]",
+      "apiVersion": "2015-06-15",
+      "location": "[resourceGroup().location]",
+      "dependsOn": [
+        "[concat('Microsoft.Compute/virtualMachines/', variables('vmName'), copyindex())]"
+      ],
+      "copy": {
+        "name": "scriptCopyLoop",
+        "count": "[variables('vmCount')]"
+      },
+      "properties": {
+        "publisher": "Microsoft.OSTCExtensions",
+        "type": "CustomScriptForLinux",
+        "typeHandlerVersion": "1.5",
+        "autoUpgradeMinorVersion": true,
+        "settings": {
+          "fileUris": "[
+              parameters('osSettings').scripts
+           ]",
+          "commandToExecute": "[concat('bash worker_install.sh ', parameters('commonSettings').adminUsername)]"
+        }
+      }
+    }
+  ],
+  "outputs": {}
+}

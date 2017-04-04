@@ -1,0 +1,382 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "storageAccountNamePrefix": {
+      "type": "string",
+      "metadata": {
+        "description": "Unique name of the new storage account that will be created to store virtual machine VHDs"
+      }
+    },
+    "domainName": {
+      "type": "string",
+      "metadata": {
+        "description": "Domain name of the public jumpbox"
+      }
+    },
+    "adminUsername": {
+      "type": "string",
+      "defaultValue": "azureuser",
+      "metadata": {
+        "description": "Virtual machine administrator username"
+      }
+    },
+    "adminPassword": {
+      "type": "securestring",
+      "metadata": {
+        "description": "Virtual machine administrator password"
+      }
+    },
+    "sshKeyData": {
+      "type": "string",
+      "metadata": {
+        "description": "SSH rsa public key file as a string."
+      }
+    },
+    "tshirtSize": {
+      "type": "string",
+      "defaultValue": "Medium",
+      "allowedValues": [
+        "Medium",
+        "Large",
+        "XLarge"
+      ],
+      "metadata": {
+        "description": "T-shirt size of the cdh deployment"
+      }
+    },
+    "jumpbox": {
+      "type": "string",
+      "defaultValue": "Enabled",
+      "allowedValues": [
+        "Enabled",
+        "Disabled"
+      ],
+      "metadata": {
+        "description": "The flag allowing to enable or disable provisioning of the jumpbox VM that can be used to access the cdh environment"
+      }
+    },
+   "batchSettings": {
+      "type": "string",
+     "defaultValue": "0",
+      "metadata": {
+        "description": "batch number"
+      }
+    },
+    "virtualNetworkName": {
+      "type": "string",
+      "defaultValue": "zone1",
+      "metadata": {
+        "description": "Virtual network name"
+      }
+    }
+  },
+  "variables": {
+    "templateBaseUrl": "https://raw.githubusercontent.com/mganta/cdh-manageddisks/master/",
+    "sharedTemplateUrl": "[concat(variables('templateBaseUrl'), 'shared-resources.json')]",
+    "tshirtSizeMedium": {
+      "vmSize": "Standard_D14_V2",
+      "diskSize": 1023,
+      "vmTemplate": "[concat(variables('templateBaseUrl'),'worker-resources.json')]",
+      "masterCount": 3,
+      "workerCount": 4,
+      "storage": {
+        "name": "[parameters('storageAccountNamePrefix')]",
+        "count": 1,
+        "jumpbox" : 0
+      }
+    },
+    "tshirtSizeLarge": {
+      "vmSize": "Standard_D14_V2",
+      "diskSize": 1023,
+      "vmTemplate": "[concat(variables('templateBaseUrl'), 'worker-resources.json')]",
+      "masterCount": 5,
+      "workerCount": 100,
+      "storage": {
+        "name": "[parameters('storageAccountNamePrefix')]",
+        "count": 1,
+        "jumpbox" : 0
+      }
+    },
+    "tshirtSizeXLarge": {
+      "vmSize": "Standard_D14_V2",
+      "diskSize": 1023,
+      "vmTemplate": "[concat(variables('templateBaseUrl'), 'worker-resources.json')]",
+      "masterCount": 8,
+      "workerCount": 200,
+      "storage": {
+        "name": "[parameters('storageAccountNamePrefix')]",
+        "count": 1,
+        "jumpbox" : 0
+      }
+    },
+    "tshirtSize": "[variables(concat('tshirtSize', parameters('tshirtSize')))]",
+    "jumpboxTemplateEnabled": "jumpbox-resources.json",
+    "jumpboxTemplateDisabled": "empty-resources.json",
+    "vmTemplatemaster": "[concat(variables('templateBaseUrl'), 'master-resources.json')]",
+    "vmTemplateutil": "[concat(variables('templateBaseUrl'), 'bind-resources.json')]",
+    "jumpboxTemplateUrl": "[concat(variables('templateBaseUrl'), 'jumpbox-resources.json')]",
+    "sshKeyPath": "[concat('/home/',parameters('adminUsername'),'/.ssh/authorized_keys')]",
+    "osSettings": {
+      "scripts": [
+        "[concat(variables('templateBaseUrl'), 'master_install.sh')]",
+        "[concat(variables('templateBaseUrl'), 'jump_install.sh')]",
+        "[concat(variables('templateBaseUrl'), 'worker_install.sh')]",
+        "[concat(variables('templateBaseUrl'), 'scripts/os_updates.sh')]",
+        "[concat(variables('templateBaseUrl'), 'scripts/prepare_data_nodes.sh')]",
+        "[concat(variables('templateBaseUrl'), 'scripts/prepare_master_nodes.sh')]"
+      ],
+      "imageReference": {
+          "publisher": "cloudera",
+          "offer": "cloudera-centos-os",
+          "sku": "7_2",
+          "version": "latest"
+      }
+    },
+    "networkSettings": {
+      "vnetName": "[parameters('virtualNetworkName')]",
+      "addressPrefix": "10.2.0.0/16",
+      "subnets": {
+        "jump": {
+          "name": "jump",
+          "prefix": "10.2.16.0/23",
+          "vnet": "[parameters('virtualNetworkName')]"
+        },
+        "util": {
+          "name": "util",
+          "prefix": "10.2.20.0/27",
+          "vnet": "[parameters('virtualNetworkName')]"
+        },
+        "master": {
+          "name": "master",
+          "prefix": "10.2.18.0/23",
+          "addprefix": "10.2.18.1",
+          "vnet": "[parameters('virtualNetworkName')]"
+        },
+        "worker": {
+          "name": "worker",
+          "prefix": "10.2.0.0/20",
+          "addprefix": "10.2.0.1",
+          "vnet": "[parameters('virtualNetworkName')]"
+        }
+      }
+    },
+    "availabilitySetSettings": {
+      "name": "cdhAvailabilitySet",
+      "fdCount": 3,
+      "udCount": 5
+    }
+  },
+  "resources": [
+    {
+      "name": "shared",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2016-02-01",
+      "properties": {
+        "mode": "Incremental",
+        "templateLink": {
+          "uri": "[variables('sharedTemplateUrl')]",
+          "contentVersion": "1.0.0.0"
+        },
+        "parameters": {
+          "storageSettings": {
+            "value": "[variables('tshirtSize').storage]"
+          },
+          "networkSettings": {
+            "value": "[variables('networkSettings')]"
+          },
+          "availabilitySetSettings": {
+            "value": "[variables('availabilitySetSettings')]"
+          }
+        }
+      }
+    },
+   {
+      "name": "util-node",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2016-02-01",
+      "dependsOn": [
+        "[concat('Microsoft.Resources/deployments/', 'shared')]"
+      ],
+      "properties": {
+        "mode": "Incremental",
+        "templateLink": {
+          "uri": "[variables('vmTemplateutil')]",
+          "contentVersion": "1.0.0.0"
+        },
+        "parameters": {
+          "adminPassword": {
+            "value": "[parameters('adminPassword')]"
+          },
+          "osSettings": {
+            "value": "[variables('osSettings')]"
+          },
+          "subnet": {
+            "value": "[variables('networkSettings').subnets.util]"
+          },
+          "batchSettings": {
+            "value": "[parameters('batchSettings')]"
+          },
+          "commonSettings": {
+            "value": {
+              "adminUsername": "[parameters('adminUsername')]",
+              "sshKeyPath": "[variables('sshKeyPath')]",
+              "sshKeyData": "[parameters('sshKeyData')]",
+              "namespace": "util"
+            }
+          },
+          "storageSettings": {
+            "value": "[variables('tshirtSize').storage]"
+          },
+          "machineSettings": {
+            "value": {
+              "vmSize": "[variables('tshirtSize').vmSize]",
+              "diskSize": "[variables('tshirtSize').diskSize]",
+              "vmCount": 1,
+              "availabilitySet": "[variables('availabilitySetSettings').name]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "master-node",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2016-02-01",
+      "dependsOn": [
+        "[concat('Microsoft.Resources/deployments/', 'util-node')]"
+      ],
+      "properties": {
+        "mode": "Incremental",
+        "templateLink": {
+          "uri": "[variables('vmTemplatemaster')]",
+          "contentVersion": "1.0.0.0"
+        },
+        "parameters": {
+          "adminPassword": {
+            "value": "[parameters('adminPassword')]"
+          },
+          "osSettings": {
+            "value": "[variables('osSettings')]"
+          },
+          "subnet": {
+            "value": "[variables('networkSettings').subnets.master]"
+          },
+          "batchSettings": {
+            "value": "[parameters('batchSettings')]"
+          },      
+          "commonSettings": {
+            "value": {
+              "adminUsername": "[parameters('adminUsername')]",
+              "sshKeyPath": "[variables('sshKeyPath')]",
+              "sshKeyData": "[parameters('sshKeyData')]",
+              "namespace": "master"
+            }
+          },
+          "storageSettings": {
+            "value": "[variables('tshirtSize').storage]"
+          },
+          "machineSettings": {
+            "value": {
+              "vmSize": "[variables('tshirtSize').vmSize]",
+              "diskSize": "[variables('tshirtSize').diskSize]",
+              "vmCount": "[variables('tshirtSize').masterCount]",
+              "availabilitySet": "[variables('availabilitySetSettings').name]",
+              "addprefix": "[variables('networkSettings').subnets.master.addprefix]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "worker-node",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2016-02-01",
+      "dependsOn": [
+        "[concat('Microsoft.Resources/deployments/', 'master-node')]"
+      ],
+      "properties": {
+        "mode": "Incremental",
+        "templateLink": {
+          "uri": "[variables('tshirtSize').vmTemplate]",
+          "contentVersion": "1.0.0.0"
+        },
+        "parameters": {
+          "adminPassword": {
+            "value": "[parameters('adminPassword')]"
+          },
+          "osSettings": {
+            "value": "[variables('osSettings')]"
+          },
+          "subnet": {
+            "value": "[variables('networkSettings').subnets.worker]"
+          },
+          "batchSettings": {
+            "value": "[parameters('batchSettings')]"
+          },
+          "commonSettings": {
+            "value": {
+              "adminUsername": "[parameters('adminUsername')]",
+              "sshKeyPath": "[variables('sshKeyPath')]",
+              "sshKeyData": "[parameters('sshKeyData')]",
+              "namespace": "worker"
+            }
+          },
+          "storageSettings": {
+            "value": "[variables('tshirtSize').storage]"
+          },
+          "machineSettingsWorker": {
+            "value": {
+              "vmSize": "[variables('tshirtSize').vmSize]",
+              "diskSize": "[variables('tshirtSize').diskSize]",
+              "vmCount": "[variables('tshirtSize').workerCount]",
+              "availabilitySet": "[variables('availabilitySetSettings').name]",
+              "workerSubnet": "[variables('networkSettings').subnets.worker.addprefix]",
+              "addprefix": "[variables('networkSettings').subnets.worker.addprefix]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "jumpbox",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2016-02-01",
+      "dependsOn": [
+        "[concat('Microsoft.Resources/deployments/', 'util-node')]"
+      ],
+      "properties": {
+        "mode": "Incremental",
+        "templateLink": {
+          "uri": "[variables('jumpboxTemplateUrl')]",
+          "contentVersion": "1.0.0.0"
+        },
+        "parameters": {
+          "storageSettings": {
+            "value": {
+              "name": "[concat(parameters('storageAccountNamePrefix'), variables('tshirtSize').storage.jumpbox)]"
+            }
+          },
+          "commonSettings": {
+            "value": {
+              "adminUsername": "[parameters('adminUsername')]",
+              "sshKeyPath": "[variables('sshKeyPath')]",
+              "sshKeyData": "[parameters('sshKeyData')]",
+              "namespace": "jumpbox"
+            }
+          },
+          "adminPassword": {
+            "value": "[parameters('adminPassword')]"
+          },
+          "subnet": {
+            "value": "[variables('networkSettings').subnets.jump]"
+          },
+          "osSettings": {
+            "value": "[variables('osSettings')]"
+          }
+        }
+      }
+    }
+  ],
+  "outputs": {}
+}

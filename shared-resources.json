@@ -1,0 +1,68 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "storageSettings": {
+      "type": "object"
+    },
+    "availabilitySetSettings": {
+      "type": "object"
+    },
+    "networkSettings": {
+      "type": "object"
+    },
+  },
+  "variables": {},
+  "resources": [
+    {
+      "apiVersion": "2015-06-15",
+      "type": "Microsoft.Network/virtualNetworks",
+      "name": "[parameters('networkSettings').vnetName]",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": [
+            "[parameters('networkSettings').addressPrefix]"
+          ]
+        },
+        "subnets": [
+          {
+            "name": "[parameters('networkSettings').subnets.jump.name]",
+            "properties": {
+              "addressPrefix": "[parameters('networkSettings').subnets.jump.prefix]"
+            }
+          },
+          {
+            "name": "[parameters('networkSettings').subnets.master.name]",
+            "properties": {
+              "addressPrefix": "[parameters('networkSettings').subnets.master.prefix]"
+            }
+          },
+          {
+            "name": "[parameters('networkSettings').subnets.worker.name]",
+            "properties": {
+              "addressPrefix": "[parameters('networkSettings').subnets.worker.prefix]"
+            }
+          },
+          {
+            "name": "[parameters('networkSettings').subnets.util.name]",
+            "properties": {
+              "addressPrefix": "[parameters('networkSettings').subnets.util.prefix]"
+            }
+         }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Compute/availabilitySets",
+      "name": "[parameters('availabilitySetSettings').name]",
+      "apiVersion": "2016-04-30-preview",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "platformFaultDomainCount": "[parameters('availabilitySetSettings').fdCount]",
+        "platformUpdateDomainCount": "[parameters('availabilitySetSettings').udCount]"
+      }
+    }
+  ],
+  "outputs": {}
+}
